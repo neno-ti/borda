@@ -86,7 +86,17 @@ el.id="f_"+key;el.name=key;d.append(lab,el);fields.appendChild(d);});
 const map=L.map("map").setView([-26.91,-48.66],13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:20,attribution:'&copy; OpenStreetMap'}).addTo(map);
 const pinIcon=L.divIcon({className:"",html:'<div style="background:#1769aa;color:#fff;border:2px solid white;border-radius:50% 50% 50% 0;width:22px;height:22px;transform:rotate(-45deg);box-shadow:0 1px 5px #333"><div style="transform:rotate(45deg);text-align:center;font-size:12px;line-height:18px">●</div></div>',iconSize:[22,22],iconAnchor:[11,22]});
-function parseGeo(value){if(!value)return null;let s=String(value).trim().replace(/[()]/g,"");let nums=s.match(/-?\\d+(?:[.,]\\d+)?/g);if(!nums||nums.length<2)return null;let lat=Number(nums[0].replace(",",".")),lon=Number(nums[1].replace(",","."));if(Math.abs(lat)>90||Math.abs(lon)>180)return null;return [lat,lon];}
+function parseGeo(value){
+ if(value===null||value===undefined||String(value).trim()==="")return null;
+ // Aceita latitude e longitude decimais separadas por vírgula, ponto e vírgula ou espaço.
+ const s=String(value).trim().replace(/[()]/g,"");
+ const nums=s.match(/-?\d+(?:[.,]\d+)?/g);
+ if(!nums||nums.length<2)return null;
+ const lat=Number(nums[0].replace(",",".")),lon=Number(nums[1].replace(",","."));
+ if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return null;
+ // Evita interpretar valores sem sinal, com separador decimal por vírgula, como coordenada inválida.
+ return [lat,lon];
+}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function filtered(){const q=document.getElementById("search").value.toLowerCase().trim();const filters=[...document.querySelectorAll("[data-filter]")].map(el=>[el.dataset.filter,el.value.toLowerCase().trim()]).filter(x=>x[1]);return records.filter(r=>(!q||COLS.some(c=>String(r[c]||"").toLowerCase().includes(q)))&&filters.every(([k,v])=>String(r[k]||"").toLowerCase().includes(v)));}
 function pingCell(r){const st=r.PING_STATUS||"unknown";const cls=st==="online"?"ping-online":st==="offline"?"ping-offline":"ping-unknown";const label=st==="online"?"Ping respondeu":st==="offline"?"Sem resposta":"Ainda não verificado";return `<span class="ping-dot ${cls}" title="${label}" aria-label="${label}"></span>`;}
@@ -96,7 +106,22 @@ document.querySelectorAll("#tbody tr[data-id]").forEach(tr=>tr.addEventListener(
 renderMarkers();}
 function renderMarkers(){Object.values(markers).forEach(m=>map.removeLayer(m));markers={};records.forEach(r=>{const p=parseGeo(r.GEORREFERENCIAMENTO);if(!p)return;const m=L.marker(p,{icon:pinIcon}).addTo(map).bindPopup(`<b>${esc(r.HOSTNAME||"Switch sem hostname")}</b><br>IP: ${esc(r.IP)}<br>Local: ${esc(r["LOCALIZAÇÃO"])}<br>Rack: ${esc(r.RACK)}`);m.on("click",()=>{selectedId=r._id;fillForm(r);renderTableOnly();});markers[r._id]=m;});}
 function renderTableOnly(){const arr=filtered();document.querySelectorAll("#tbody tr[data-id]").forEach(tr=>tr.classList.toggle("selected",Number(tr.dataset.id)===selectedId));}
-function selectRecord(id){const r=records.find(x=>x._id===id);if(!r)return;selectedId=id;fillForm(r);renderTableOnly();const p=parseGeo(r.GEORREFERENCIAMENTO);document.getElementById("mapMessage").textContent=p?`Localização selecionada: ${r.HOSTNAME||r.IP||"Switch"} — ${p[0]}, ${p[1]}`:"Este equipamento não possui georreferenciamento válido preenchido na planilha.";if(p){map.setView(p,18);if(markers[id])markers[id].openPopup();}}
+function selectRecord(id){
+ const r=records.find(x=>x._id===id);if(!r)return;
+ selectedId=id;fillForm(r);renderTableOnly();
+ const p=parseGeo(r.GEORREFERENCIAMENTO);
+ const msg=document.getElementById("mapMessage");
+ if(p){
+  msg.textContent=`Localização selecionada: ${r.HOSTNAME||r.IP||"Switch"} — ${p[0]}, ${p[1]}`;
+  // Recalcula o tamanho do mapa antes de centralizar, inclusive em telas redimensionadas.
+  map.invalidateSize(true);
+  map.setView(p,18,{animate:true});
+  if(markers[id])markers[id].openPopup();
+  else {const m=L.marker(p,{icon:pinIcon}).addTo(map).bindPopup(`<b>${esc(r.HOSTNAME||"Switch sem hostname")}</b><br>IP: ${esc(r.IP)}<br>Local: ${esc(r["LOCALIZAÇÃO"])}<br>Rack: ${esc(r.RACK)}`);markers[id]=m;m.openPopup();}
+ }else{
+  msg.textContent="Este equipamento não possui georreferenciamento válido. Preencha o campo no formato latitude, longitude (ex.: -26.900000, -48.650000).";
+ }
+}
 function fillForm(r){document.getElementById("formTitle").textContent=r?"Editar equipamento":"Novo equipamento";fieldConfig.forEach(([k])=>{const el=document.getElementById("f_"+k);el.value=r?(r[k]??""):"";});document.getElementById("f_DATA_CADASTRO").value=r?(r.DATA_CADASTRO||""):"Será definido ao salvar";document.getElementById("f_DATA_ATUALIZACAO").value=r?(r.DATA_ATUALIZACAO||"Ainda não atualizado"):"Será definido ao salvar";}
 function openModal(){document.getElementById("editModal").classList.add("open");}
 function closeModal(){document.getElementById("editModal").classList.remove("open");}
